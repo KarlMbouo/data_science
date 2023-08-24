@@ -1,0 +1,100 @@
+---
+title: "Fish Market"
+author: "Karl Mbouombouo"
+date: "2023-08-21"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Packages
+
+```{r}
+library(readr)
+library("ggplot2")
+library("dplyr")
+library("broom")
+library("ggpubr")
+library("psych")
+library('ggiraphExtra')
+```
+
+## Data
+
+```{r fish}
+fish.data <- read_csv("~/Desktop/R-Projects/Multiple Linear Regression/Fish Market/Fish.csv")
+
+which(is.na(fish.data))
+
+summary(fish.data)
+
+dim(fish.data)
+```
+
+## Correlation and Plots
+
+```{r pressure, echo=FALSE}
+corPlot(fish.data[3:7], cex = 0.8)
+```
+An highly correlation exist between Length1, Length2, and Length3, so we cannot 
+include those parameters together in the model.
+
+```{r}
+# Relationship between Weight and Length1
+ggplot(fish.data, aes(x = Length1, y = Weight)) +
+  geom_point()
+
+# Relationship between Weight and Height
+ggplot(fish.data, aes(x = Height, y = Weight)) +
+  geom_point()
+
+# Relationship between Weight and Width
+ggplot(fish.data, aes(x = Width, y = Weight)) +
+  geom_point()
+```
+
+```{r}
+hist(fish.data$Weight)
+```
+The distribution of observations is roughly right-skewed, the mean is greater 
+than the median.
+
+## Modeling
+```{r}
+fit <- lm(Weight ~ Length1 + Height + Width, data = fish.data)
+summary(fit)
+```
+The estimated effect of the length1 on weight is 22.683, while the estimated 
+effect of height is 13.670, and width is 44.069.
+The p-value here it's 2.2e-16 (or almost zero), which will indicate whether the 
+model fits the data well.
+We can say that there is a significant positive relationship between Weight and 
+Lenght1, Height and Width, with respectively 22.683 unit, 13.670 unit and 44.069
+increase in fish's weight for every unit increase in Lenght1, Height and Width.
+
+## Result visualization
+```{r}
+par(mfrow=c(2,2))
+plot(fit)
+par(mfrow=c(1,1))
+```
+The residuals are all basically horizontal and centered around zero. This means
+there are no outliers or biases in the data that would make a linear regression 
+invalid.
+From the Normal Q-Q plot in the top right, we can see that the real residuals 
+from our model form an almost perfectly one-to-one line with the theoretical 
+residuals from a perfect model.
+Based on these residuals, we can say that our model meets the assumption of 
+homoscedasticity.
+
+## Conclusion
+In our fish surveys, we found significant relationships between the fish weight 
+and the length, height and width (p < 0, p < 0.001, and p < 0.005 respectively).
+Specifically we found that 44.069 increase (± 15.347) in weight (gramme) for 
+every 1cm increase in width (centimeter), 22.683 increase (± 2.021) in weight
+for every 1cm increase in length, and 13.670 increase (± 3.854) in weight
+for every 1cm increase in width.
