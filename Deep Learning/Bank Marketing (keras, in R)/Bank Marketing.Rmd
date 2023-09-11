@@ -1,0 +1,806 @@
+---
+title: "Bank Marketing - Logistic Regression"
+author: "Karl Mbouombouo"
+date: "2023-08-28"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The data is related with direct marketing campaigns (phone calls) of a 
+Portuguese banking institution. The classification goal is to predict if the 
+client will subscribe a term deposit (variable y).
+
+## Packages
+```{r}
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tidymodels)
+library(broom)
+library(forcats)
+library(caret)
+library(ggcorrplot)
+library(keras)
+library(tensorflow)
+```
+
+## Read and prepapre the data
+```{r}
+df <- read_delim("~/Desktop/R-Projects/Logistic Regression/bank-additional-full.csv", 
+                 delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+# Missing Values
+which(is.na(df))
+
+summary(df)
+```
+
+```{r}
+# Data frame containing all rows that are duplicated in the original data frame
+df[duplicated(df) | duplicated(df, fromLast = TRUE), ]
+```
+
+```{r}
+# Data frame data without any duplicate rows
+df <- unique(df)
+df[duplicated(df) | duplicated(df, fromLast = TRUE), ]
+```
+
+# EDA
+## Plots
+```{r}
+# Histogram Kernel density estimation for Age
+ggplot(df, aes(x = age, fill = ..density..)) +
+  geom_histogram(binwidth = 1, color = 'black', alpha = 0.5) +
+  geom_density(alpha = 0.5, fill = 'red') +
+  theme_minimal() +
+  labs(
+    title = 'Kde for Age',
+    x = 'Age',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+# Bar Plot
+ggplot(df, aes(x = "", y = age, fill = "Age")) +
+  geom_boxplot(fill = "red") +
+  theme_minimal() +
+  labs(
+    title = 'BoxPlot For Age',
+    x = '',
+    y = 'Age'
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+# Calculate quartiles and IQR
+q25 <- quantile(df$age, 0.25)
+q75 <- quantile(df$age, 0.75)
+iqr <- q75 - q25
+
+# Calculate upper and lower bounds for potential outliers
+max_value <- q75 + iqr * 1.5
+min_value <- q25 - iqr * 1.5
+
+# Cap outliers in the 'age' column
+df$age[df$age > max_value] <- max_value
+df$age[df$age < min_value] <- min_value
+
+# Return quartiles, IQR, upper bound, and lower bound
+list(q25 = q25, q75 = q75, iqr = iqr, max_value = max_value, min_value = min_value)
+```
+
+```{r}
+# Calculate the counts of each job category
+job_counts <- table(df$job)
+
+# Create a data frame for plotting
+job_data <- data.frame(Job = names(job_counts), Count = as.numeric(job_counts))
+
+# Create the bar plot
+ggplot(job_data, aes(x = Job, y = Count, fill = Job)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(
+    title = 'Distribution Of Job',
+    x = 'Job',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+# Analyze and understand the relationship between two categorical variables in our data
+table(df$y, df$job)
+
+# Create a countplot with 'job' on the x-axis and 'y' as fill
+ggplot(df, aes(x = factor(job), fill = y)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1)
+  theme_minimal() +
+  labs(
+    title = 'Distribution Of Job Frequency Target',
+    x = 'Job',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+table(df$loan, df$job)
+
+ggplot(df, aes(x = factor(job), fill = loan)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1)
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Job Freqency Loan',
+    x = 'Job',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+# Data frame that contains the unique combinations of 'y', 'loan', and 'job' 
+# as well as a count of occurrences for each combination.
+
+df %>%
+  group_by(y, loan, job) %>%
+  summarise(count = n())
+```
+
+```{r}
+table(df$contact, df$job)
+
+ggplot(df, aes(x = factor(job), fill = contact)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1)
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Job Freqency Contact',
+    x = 'Job',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+table(df$marital, df$job)
+
+ggplot(df, aes(x = factor(job), fill = marital)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1)
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Job Freqency Marital',
+    x = 'Job',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+table(df$education, df$job)
+
+ggplot(df, aes(x = factor(job), fill = education)) +
+  geom_bar(position = "dodge") +
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Job Freqency Education',
+    x = 'Job',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+table(df$default, df$job)
+
+ggplot(df, aes(x = factor(job), fill = default)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1)
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Job Freqency Default',
+    x = 'Job',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+table(df$housing, df$job)
+
+ggplot(df, aes(x = factor(job), fill = housing)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1)
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Job Freqency Housing',
+    x = 'Job',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+# Education
+table(df$education) #Counts of each unique in education column
+
+ggplot(df, aes(x = education)) +
+  geom_bar() +
+  theme_minimal() +
+  labs(
+    title = 'Distribution Of Education',
+    x = 'Education',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+
+table(df$y, df$education)
+
+ggplot(df, aes(x = education, fill = y)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1)
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Education Freqency Target',
+    x = 'Education',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+table(df$marital)
+
+ggplot(df, aes(x = marital)) +
+  geom_bar() +
+  theme_minimal() +
+  labs(
+    title = 'Distribution Of Marital',
+    x = 'Marital',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+
+table(df$y, df$marital)
+
+ggplot(df, aes(x = marital, fill = y)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1)
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Marital Freqency Target',
+    x = 'Marital',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+table(df$loan)
+
+ggplot(df, aes(x = loan)) +
+  geom_bar() +
+  theme_minimal() +
+  labs(
+    title = 'Distribution Of Loan',
+    x = 'Loan',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+
+table(df$y, df$loan)
+
+ggplot(df, aes(x = loan, fill = y)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1)
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Loan Freqency Target',
+    x = 'Loan',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+
+```{r}
+table(df$loan, df$job)
+
+ggplot(df, aes(x = factor(job), fill = loan)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1) +
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Job Freqency Loan',
+    x = 'Job',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+table(df$contact, df$job)
+
+ggplot(df, aes(x = factor(job), fill = contact)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1) +
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Job Freqency Contact',
+    x = 'Job',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+table(df$default)
+
+ggplot(df, aes(x = default)) +
+  geom_bar() +
+  theme_minimal() +
+  labs(
+    title = 'Distribution Of Default',
+    x = 'Default',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+
+table(df$y, df$default)
+
+ggplot(df, aes(x = default, fill = y)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1) +
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Default Freqency Target',
+    x = 'Default',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+table(df$contact)
+
+ggplot(df, aes(x = contact)) +
+  geom_bar() +
+  theme_minimal() +
+  labs(
+    title = 'Distribution Of Default',
+    x = 'Contact',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+
+table(df$y, df$contact)
+
+ggplot(df, aes(x = contact, fill = y)) +
+  geom_bar(position = "dodge") +
+  geom_text(stat='count', aes(label=..count..), vjust=1) +
+  theme_minimal() +
+  labs(
+    title = 'Distrubtion Of Contact Freqency Target',
+    x = 'Contact',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+
+# Create a data frame with counts and labels
+contact_counts <- table(df$contact)
+contact_data <- data.frame(Method = names(contact_counts), Count = contact_counts)
+
+pie(contact_counts,
+    labels = paste(names(contact_counts), "\n", format(contact_counts, scientific = FALSE, big.mark = ",")),
+    main = 'Distribution Of Contact',
+    cex = 0.7,
+    col = rainbow(length(contact_counts)),
+    clockwise = TRUE,
+    init.angle = 90)
+
+total = 15041 + 26135
+telephone = (15041) / total
+cellular = (26135) / total
+cat("Telephone:", telephone*100, "%\n")
+cat("Cellular:", cellular*100, "%\n")
+```
+
+```{r}
+y_counts <- table(df$y)
+
+pie(
+  y_counts,
+  labels = paste(names(y_counts), "\n", format(y_counts / sum(y_counts) * 100, digits = 2, nsmall = 2, big.mark = ",")),
+  main = 'Distribution Of Target',
+  cex = 0.7,
+  col = rainbow(length(y_counts)),
+  clockwise = TRUE,
+  init.angle = 90,
+  border = "white"
+)
+```
+
+```{r}
+month_counts <- table(df$month)
+
+ggplot(df, aes(x = month)) +
+  geom_bar() +
+  geom_text(stat='count', aes(label=..count..), vjust=1) +
+  theme_minimal() +
+  labs(
+    title = 'Distribution Of Month',
+    x = 'Month',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+table(df$y, df$month)
+
+ggplot(df, aes(x = month, fill = y)) +
+  geom_bar(position = 'dodge', width = 0.7) +
+  geom_text(stat='count', aes(label=..count..), vjust=1) +
+  theme_minimal() +
+  labs(
+    title = 'Distribution Of Month Frequency Target',
+    x = 'Month',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+day_counts <- table(df$day_of_week)
+
+pie(
+  day_counts,
+  labels = paste(names(day_counts), "\n", format(day_counts / sum(day_counts) * 100, digits = 2, nsmall = 2, big.mark = ",")),
+  main = 'Distribution Of Days',
+  cex = 0.7,
+  col = rainbow(length(day_counts)),
+  clockwise = TRUE,
+  init.angle = 90,
+  border = "white"
+)
+```
+
+```{r}
+table(df$month, df$day_of_week)
+
+ggplot(df, aes(x = month, fill = day_of_week)) +
+  geom_bar(position = 'dodge', width = 0.7) +
+  theme_minimal() +
+  labs(
+    title = 'Distribution Of Month Frequency Days',
+    x = 'Month',
+    y = 'Count'
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 45)
+  )
+```
+
+```{r}
+#  Grid of subplots to visualize the distribution and spread of each variable's values.
+l <- c('duration', 'campaign', 'emp.var.rate', 'cons.price.idx',
+        'cons.conf.idx', 'euribor3m', 'nr.employed', 'pdays', 'previous')
+
+# Set the figure size
+options(repr.plot.width = 20, repr.plot.height = 30) 
+
+plot_list <- list()
+
+for (x in l) {
+  plot <- ggplot(df, aes(y = df[[x]])) +
+    geom_boxplot(fill = "red") +
+    labs(
+      title = paste("BoxPlot For", substr(x, 1, 1), substring(x, 2)),
+      x = substring(x, 1, 1) %||% substring(x, 2),
+      y = "Value"
+    ) +
+    theme_minimal()
+  # Append the plot to the list
+  plot_list[[x]] <- plot
+}
+
+for (x in l) {
+  print(plot_list[[x]])
+}
+```
+
+```{r}
+# Loop through the variables
+for (i in l) {
+  # Calculate quartiles and interquartile range (IQR)
+  q25 <- quantile(df[[i]], 0.25)
+  q75 <- quantile(df[[i]], 0.75)
+  qr <- q75 - q25
+  
+  # Calculate upper and lower bounds for outlier detection
+  max <- q75 + qr * 1.5
+  min <- q25 - qr * 1.5
+  
+  # Cap outliers by setting values outside the bounds to the bounds
+  df[[i]][df[[i]] > max] <- max
+  df[[i]][df[[i]] < min] <- min
+  
+  # Print the results
+  cat(paste("For", i, ":\n"))
+  cat("Q25:", q25, "\n")
+  cat("Q75:", q75, "\n")
+  cat("IQR:", qr, "\n")
+  cat("Max:", max, "\n")
+  cat("Min:", min, "\n\n")
+}
+```
+
+# Machine Learning 
+## Prepare the data
+```{r}
+# Select all columns except the last one and store it in X
+X <- df %>%
+  select(-ncol(df))
+
+# Select the last column and store it in y
+y <- df %>%
+  select(ncol(df))
+
+# Get the column names of X and store them in key
+key <- colnames(X)
+
+# The data frame
+X
+```
+
+```{r}
+# Converting a categorical variable with 'no' = 0  and 'yes' = 1 
+y <- y %>%
+  mutate(y = ifelse(y == 'no', 0, ifelse(y == 'yes', 1, y)))
+
+y
+```
+
+```{r}
+# Create a list of columns that have the data type character.
+# Converts categorical information into a format that can be used by machine learning algorithm
+# Each category becomes a new binary column, which is useful for modeling and analysis.
+categorical_columns <- X %>%
+  select_if(is.character) %>%
+  colnames()
+
+for (i in categorical_columns) {
+  X <- X %>%
+    mutate(!!i := as.factor(!!sym(i)) %>% as.numeric())
+}
+
+X
+```
+
+```{r}
+# Create an instance of the Min-Max scaler
+min_max <- preProcess(X, method = "range")
+
+# Scale the data
+X <- predict(min_max, X)
+
+colnames(X) <- key
+
+X
+```
+
+```{r}
+# Creates a heatmap plot that visualizes the correlations between variables in 
+# the data2 DataFrame, including the target variable 'y'
+# Create a copy of the data frame X
+df2 <- X
+
+# Add the 'y' column to data2
+df2$y <- y
+
+options(repr.plot.width = 15, repr.plot.height = 10)
+
+# Calculate the correlation matrix
+cor_matrix <- cor(df2[, unlist(lapply(df2, is.numeric))])
+
+# Create a heatmap using ggcorrplot
+ggcorrplot(cor_matrix, type = "lower", outline.col = "white", lab = TRUE)
+```
+
+
+```{r}
+# Convert the Target value as factor
+y <- y[['y']] %>% as.factor
+```
+
+## Modelisation
+```{r}
+# split into two subsets: one for training the machine learning model 
+# (X_train and y_train) and another for evaluating the model's performance (X_test and y_test)
+set.seed(123)
+
+# Split the dataset into training and testing sets with p = 0.80
+split <- createDataPartition(y, p = 0.2, list = FALSE)
+
+X_train <- X[-split, ]
+X_test <- X[split, ]
+
+y_train <- y[-split]
+y_test <- y[split]
+
+# Print the shapes of the training and testing sets
+cat("X_train shape", dim(X_train), "\n")
+cat("X_test shape", dim(X_test), "\n")
+cat("y_train shape", length(y_train), "\n")
+cat("y_test shape", length(y_test), "\n")
+```
+
+```{r}
+# Obtain the shapes of these datasets to verify their sizes.
+# Ensure that your data splitting process worked as intended and that you have 
+# the correct number of data points in each set for model evaluation and validation
+set.seed(123)
+
+# Split the dataset into training and testing sets with p = 0.80
+indices <- createDataPartition(y_test, p = 0.25, list = FALSE)
+
+
+X_val <- X_test[indices, ]
+X_test <- X_test[-indices, ]
+
+y_val <- y_test[indices]
+y_test <- y_test[-indices]
+
+# Print the dimensions of the test and validation sets
+cat("X_test shape: ", dim(X_test), "\n")
+cat("X_val shape: ", dim(X_val), "\n")
+cat("y_test shape: ", length(y_test), "\n")
+cat("y_val shape: ", length(y_val), "\n")
+```
+
+## Neural Network model
+```{r}
+# Initialize a sequential model
+model <- keras_model_sequential()
+
+# Add the first Dense layer
+model %>%
+  layer_dense(units = 128, input_shape = dim(X_train)[2], activation = "relu", name = "Dense_Layer1") %>%
+  layer_dense(units = 256, activation = "relu", name = "Dense_Layer2") %>%
+  layer_dense(units = 1, activation = "sigmoid", name = "Dense_Layer3")
+
+summary(model)
+```
+
+```{r}
+# Compile the model
+model %>% compile(
+  optimizer = optimizer_adam(),
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+# Define callbacks
+checkpoint_cb <- callback_model_checkpoint(
+  filepath = "my_keras_model.h5",
+  save_best_only = TRUE
+)
+
+early_stopping_cb <- callback_early_stopping(
+  patience = 10,
+  restore_best_weights = TRUE
+)
+
+# Train the model
+history <- model %>% fit(
+  x = as.matrix(X_train),
+  y = as.numeric(y_train),
+  epochs = 30,
+  batch_size = 100,
+  validation_data = list(as.matrix(X_val), as.numeric(y_val)),
+  callbacks = list(checkpoint_cb, early_stopping_cb)
+)
+
+history
+```
+
+```{r}
+model %>% compile(
+  optimizer = optimizer_adam(),
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+evaluation <- model %>% evaluate(as.matrix(X_test), as.numeric(y_test))
+evaluation
+
+# Print the test loss and accuracy
+#cat("Test Loss:", evaluation[1], "\n")
+cat("Test Accuracy:", evaluation[2], "\n")
+```
