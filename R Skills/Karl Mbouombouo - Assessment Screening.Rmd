@@ -1,0 +1,213 @@
+---
+title: "Denver Broncos - Assessment"
+author: "Karl Mbouombouo"
+date: "2023-07-28"
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(readr)
+library(dlookr)
+```
+
+## Explore & Clean Dataset
+
+```{r, results='hide'}
+procedures <- read_csv("procedures.csv")
+procedure_details <- read_csv("procedure_details.csv")
+pets <- read_csv("pets.csv")
+owners <- read_csv("owners.csv")
+
+#Missing Values (NA)
+which(is.na(procedures))
+which(is.na(procedure_details))
+which(is.na(pets))
+which(is.na(owners))
+```
+
+# What is the name of the oldest dog in Southfield?
+```{r, warning=FALSE}
+southfield_pets <- inner_join(owners, pets, by = "OwnerID")
+
+# Filter the data to include only pets in Southfield
+southfield_pets <- southfield_pets %>%
+  filter(City == "Southfield" & Kind == "Dog")
+
+# Find the oldest dog in Southfield
+oldest_dog <- southfield_pets %>%
+  filter(Age == max(Age))
+
+# Extract the name of the oldest dog
+oldest_dog_name <- oldest_dog$Name.y
+
+# Print the name of the oldest dog
+print(oldest_dog_name)
+```
+The name of the oldest dog is Crockett
+
+# What is the average (mean) number of pets per city?
+```{r, warning=FALSE}
+owners_pets <- merge(owners, pets, by = "OwnerID", all.x=TRUE, all.y=FALSE)
+
+# Count the number of pets in each city
+pets_per_city <- owners_pets %>%
+  group_by(City) %>%
+  summarise(total_pets = n())
+
+# Calculate the average number of pets per city
+average_pets_per_city <- mean(pets_per_city$total_pets)
+
+# Print the result
+print(average_pets_per_city)
+```
+2.5
+
+# Which owner spent the most on procedures for their pet(s)?
+```{r, warning=FALSE}
+# Combine the data
+df_2 <- inner_join(owners, pets, by = "OwnerID") %>%
+  inner_join(procedures, by = "PetID") %>%
+  inner_join(procedure_details, by = "ProcedureSubCode")
+
+# Calculate the total amount spent on procedures for each owner
+total_spent_per_owner <- df_2 %>%
+  group_by(OwnerID, Name.x, Surname) %>%
+  summarise(total_spent = sum(Price))
+            
+# Find the owner who spent the most on procedures
+owner_with_max_spending <- total_spent_per_owner %>%
+  filter(total_spent == max(total_spent))
+
+# Print the result
+print(owner_with_max_spending)
+```
+Lee Mckenzie
+
+# How many owners spent 20 dollars or more on procedures for their pets?
+```{r, warning=FALSE}
+# Calculate the total cost of procedures for each pet based on 'ProcedureType' and 'ProcedureSubCode'
+total_cost_per_pet <- procedure_details %>%
+  left_join(procedures, by = c("ProcedureType", "ProcedureSubCode")) %>%
+  group_by(PetID) %>%
+  summarize(TotalCost = sum(Price, na.rm = TRUE))
+
+# Merge the 'pets' and 'total_cost_per_pet' data on PetID
+merge_1 <- merge(pets, total_cost_per_pet, by = "PetID")
+
+# Calculate the total procedure cost per owner
+total_cost_per_owner <- merge_1 %>%
+  group_by(OwnerID) %>%
+  summarize(TotalCost = sum(TotalCost))
+
+# Filter and count the number of owners who spent 20 dollars or more on procedures
+spent_20_or_more <- total_cost_per_owner %>%
+  filter(TotalCost >= 20) %>%
+  nrow
+
+print(spent_20_or_more)
+```
+12
+
+# How many owners have at least two different kinds of pets?
+```{r, warning=FALSE}
+# Group by 'OwnerID' and count the distinct number of 'Kind' values for each owner
+multiple_kinds <- pets %>%
+  group_by(OwnerID) %>%
+  summarize(NumDifferentKinds = n_distinct(Kind))
+
+# Filter the data to include only the owners with at least two different kinds of pets
+owners_with_multiple_kinds <- multiple_kinds %>%
+  filter(NumDifferentKinds >= 2) %>%
+  nrow()
+
+# Print the result
+print(owners_with_multiple_kinds)
+```
+4
+
+# How many owners have pets where the first letter of their name (OwnerName) matches the first letter of their pet's name (PetName)? 
+```{r, warning=FALSE}
+df_3 <- inner_join(owners, pets, by = "OwnerID")
+
+# Count the number of owners where the first letter of their name matches the first letter of their pet's name
+matching_first_letter <- df_3 %>%
+  filter(substr(Name.x, 1, 1) == substr(Name.y, 1, 1)) %>%
+  summarise(num_owners = n_distinct(OwnerID))
+
+# Print the result
+print(matching_first_letter$num_owners)
+```
+8
+
+# What percentage of cities have more male pets than female pets
+```{r, warning=FALSE}
+df_4 <- inner_join(pets, owners, by = "OwnerID")
+
+# Calculate the total number of male pets and female pets in each city
+pet_count_by_city <- df_4 %>%
+  group_by(City) %>%
+  summarise(total_male_pets = sum(Gender == "male"),
+            total_female_pets = sum(Gender == "female"))
+
+# Count the number of cities where the total number of male pets is greater than the total number of female pets
+cities_with_more_male_pets <- pet_count_by_city %>%
+  filter(total_male_pets > total_female_pets) %>%
+  nrow()
+
+# Calculate the percentage of cities with more male pets than female pets
+total_cities <- nrow(pet_count_by_city)
+percentage_more_male_pets <- (cities_with_more_male_pets / total_cities) * 100
+
+# Print the result
+print(percentage_more_male_pets)
+```
+57.5
+
+# What percentage of pets received a vaccination?
+```{r, warning=FALSE}
+df_5 <- inner_join(pets, procedures, by = "PetID")
+
+# Count the number of pets that received a vaccination
+pets_with_vaccination <- df_5 %>%
+  filter(ProcedureType == "VACCINATIONS") %>%
+  nrow()
+
+# Calculate the percentage of pets that received a vaccination
+total_pets <- nrow(pets)
+percentage_vaccinated <- (pets_with_vaccination / total_pets) * 100
+
+# Print the result
+print(percentage_vaccinated)
+```
+30% (Approximation)
+
+
+# Which city's pet sample is made up of exactly 70% dogs? The answer is case sensitive, so please match the value for City exactly.
+```{r, warning=FALSE}
+# Combine data from 'table 3' and 'table 4' based on 'OwnerID'
+df_6 <- pets %>%
+  left_join(owners, by = "OwnerID")
+
+# Filter rows where 'Kind' is 'Dog', group by 'City', and count the number of dogs in each city
+# Group by 'City' and calculate the total number of pets in each city
+result <- df_6 %>%
+  group_by(City) %>%
+  summarize(Num_Dogs = sum(Kind == "Dog"),
+            Total_Pets = n())
+
+# Calculate the ratio of dogs to total pets
+result$Dog_Ratio <- (result$Num_Dogs / result$Total_Pets) * 100
+
+# Display the table
+filtered_70<- filter(result, Dog_Ratio == 70)
+print(filtered_70)
+```
+Grand Rapids
