@@ -1,0 +1,1162 @@
+---
+title: "Basketball Analysis - NBA 2017-2018"
+author: "Karl Mbouombouo"
+date: "2023-09-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# PACKAGES
+```{r}
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(vcd)
+library(MASS)
+library(lsr)
+library(tibble)
+library(base)
+library(GGally)
+library(tidygraph)
+library(igraph)
+library(dendextend)
+```
+
+```{r}
+RNGkind(sample.kind="Rounding")
+
+rm(list=ls())
+# install.packages("devtools", repos="https://cran.stat.unipd.it/")
+# devtools::install_github("sndmrc/BasketballAnalyzeR",force=TRUE)
+library(BasketballAnalyzeR)
+
+data(package="BasketballAnalyzeR")
+nba_pbp <- PbPmanipulation(PbP.BDB)
+```
+
+# STATISTICAL ANALYSIS
+```{r}
+# Analysis TOP 6 Eastern Conference 
+# four factor: Shooting actor, turnovers, rebounding, and free throws
+rm(list=ls())
+
+tm <- c("MIL","BOS","PHI","CLE", "NY", "BKN")
+selTeams <- which(Tadd$team %in% tm)
+FF.sel <- fourfactors(Tbox[selTeams,], Obox[selTeams,])
+
+plot(FF.sel)
+```
+
+## Bar Plots
+```{r}
+X <- data.frame(Tbox, PTS.O=Obox$PTS, TOV.O=Obox$TOV,
+                CONF=Tadd$Conference)
+XE <- subset(X, CONF=="E")
+labs <- c("Steals","Blocks","Defensive Rebounds")
+barline(data=XE, id="Team", bars=c("STL","BLK","DREB"),
+        line="TOV.O", order.by="PTS.O", labels.bars=labs)
+
+ggplot(XE, aes(x=Team, y=TOV.O)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=TOV.O), vjust=-0.3, size=3.5) +
+  ggtitle("Team Eastern Conference, Total Turn Over") +
+  theme_minimal()
+
+ggplot(XE, aes(x=Team, y=STL)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=STL), vjust=-0.3, size=3.5) +
+  ggtitle("Team Eastern Conference, Total Steals") +
+  theme_minimal()
+
+ggplot(XE, aes(x=Team, y=BLK)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=BLK), vjust=-0.3, size=3.5) +
+  ggtitle("Team Eastern Conference, Total Blocks") +
+  theme_minimal()
+
+ggplot(XE, aes(x=Team, y=DREB)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=DREB), vjust=-0.3, size=3.5) +
+  ggtitle("Team Eastern Conference, Total Defensive Rebound") +
+  theme_minimal()
+
+```
+
+```{r}
+Pbox.WW <- subset(Pbox, Team=="Washington Wizards" &
+                  MIN>=500)
+
+barline(data=Pbox.WW, id="Player",
+        bars=c("P2p","P3p","FTp"), line="MIN",
+        order.by="PM", labels.bars=c("2P%","3P%","FT%"),
+        title="Washington Wizards")
+
+ggplot(Pbox.WW, aes(x=Player, y=MIN)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=MIN), vjust=-0.3, size=3.5) +
+  ggtitle("Washington Wizard, Total Minutes") +
+  theme_minimal()
+
+ggplot(Pbox.WW, aes(x=Player, y=P2p)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=P2p), vjust=-0.3, size=3.5) +
+  ggtitle("Washington Wizard, Total FG") +
+  theme_minimal()
+
+ggplot(Pbox.WW, aes(x=Player, y=P3p)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=P3p), vjust=-0.3, size=3.5) +
+  ggtitle("Washington Wizard, Total 3FG") +
+  theme_minimal()
+
+ggplot(Pbox.WW, aes(x=Player, y=P2p)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=FTp), vjust=-0.3, size=3.5) +
+  ggtitle("Washington Wizard, Total FT") +
+  theme_minimal()
+```
+
+## Radial Plots
+```{r}
+attach(Pbox.WW)
+
+X2 <- data.frame(P2M, P3M, FTM, REB=OREB+DREB, AST,
+                STL, BLK)/MIN
+
+detach(Pbox.WW)
+
+# Standardization OFF
+radialprofile(X2, title=Pbox.WW$Player, std=FALSE)
+```
+
+```{r pressure, echo=F}
+# Standardization ON
+radialprofile(X2, title=Pbox.WW$Player, std=TRUE)
+```
+
+## Scatter Plot
+```{r}
+Pbox.sel <- subset(Pbox, MIN>= 500)
+attach(Pbox.sel)
+X3 <- data.frame(AST, TOV, PTS)/MIN
+detach(Pbox.sel)
+mypal <- colorRampPalette(c("blue","yellow","red"))
+scatterplot(X3, data.var=c("AST","TOV"), z.var="PTS",
+            labels=Pbox.sel$Player, palette=mypal)
+```
+
+```{r}
+WAS <- which(Pbox.sel$Team == "Washington Wizards")
+scatterplot(X3, data.var = c("AST","TOV"), z.var="PTS",
+            labels = Pbox.sel$Player, palette=mypal,
+            subset = WAS)
+```
+
+```{r}
+# Zoom the previous scatter plot
+scatterplot(X3, data.var=c("AST","TOV"), z.var="PTS",
+            labels=Pbox.sel$Player, palette=mypal,
+            subset=WAS, zoom=c(0,0.25,0.05,0.10))
+```
+
+## Bubble Plot
+```{r}
+attach(Tbox)
+X4 <- data.frame(T=Team, P2p, P3p, FTp, AS=P2A+P3A+FTA)
+detach(Tbox)
+labs <- c("2-point shots (% made)",
+          "3-point shots (% made)",
+          "free throws (% made)",
+          "Total shots attempted")
+bubbleplot(X4, id="T", x="P2p", y="P3p", col="FTp", size="AS", labels=labs)
+```
+
+```{r}
+# Defensives stats: WAS vs. TOR
+Pbox.WAS.TOR <- subset(Pbox,
+               (Team=="Washington Wizards" |
+                      Team =="Toronto Raptors") &
+                      MIN>=500)
+attach(Pbox.WAS.TOR)
+WAS.TOR <- data.frame(ID=Player, Team, V1=DREB/MIN, V2=STL/MIN,
+                V3=BLK/MIN, V4=MIN)
+detach(Pbox.WAS.TOR)
+labs <- c("Defensive Rebounds","Steals","Blocks",
+          "Total minutes played")
+bubbleplot(WAS.TOR, id="ID", x="V1", y="V2", col="V3",
+           size="V4", text.col="Team", labels=labs,
+           title="WAS and TOR during the regular season",
+           text.legend=TRUE, text.size=3.5, scale=FALSE)
+```
+
+## Variability analysis
+```{r}
+vrb1 <- variability(data=Pbox.WW, data.var="P3p",
+                    size.var="P3A")
+
+vrb1 <- variability(data=Pbox.WW, data.var="P3p",
+                    size.var="P3A",weight=TRUE)
+
+vrb2 <- variability(data=Pbox.WW,
+                    data.var=c("P2p","P3p","FTp"),
+                    size.var=c("P2A","P3A","FTA"),
+                    weight=TRUE)
+
+plot(vrb2, title="Variability diagram - WAS")
+```
+
+## Inequality analysis
+```{r}
+ineqWW <- inequality(Pbox.WW$PTS, nplayers=8)
+
+Pbox.BC <- subset(Pbox, Team == "Boston Celtics")
+ineqBC <- inequality(Pbox.BC$PTS, nplayers=8)
+
+p1 <- plot(ineqWW, title = "Washington Wizards")
+
+p2 <- plot(ineqBC, title = "Boston Celtics")
+
+grid.arrange(p1, p2, nrow = 1)
+```
+
+```{r}
+no.teams <- nrow(Tbox)
+INEQ <- array(0, no.teams)
+for (k in 1:no.teams) {
+     Teamk <- Tbox$Team[k]
+     Pbox.sel <- subset(Pbox, Team==Teamk)
+     index <- inequality(Pbox.sel$PTS, npl=8)
+     INEQ[k] <- index$Gini
+     }
+
+dts <- data.frame(INEQ, PTS=Tbox$PTS,
+                  CONF=Tadd$Conference)
+mypal2 <- colorRampPalette(c("blue","red"))
+scatterplot(dts, data.var=c("INEQ","PTS"), z.var="CONF",
+            labels=Tbox$Team, palette=mypal,
+            repel_labels=TRUE)
+```
+
+```{r}
+PbP <- PbPmanipulation(PbP.BDB)
+
+PbP.WAS <- subset(PbP, team == "WAS")
+
+lineup <- c("Bradley Beal", "John Wall", "Otto Porter Jr.", "Kelly Oubre Jr.",
+             "Marcin Gortat")
+
+filt5 <- apply(PbP.WAS[, 4:13], 1,
+               function(x) {
+               x <- as.character(x)
+               sum(x %in% lineup)==5
+               })
+
+subPbP.WAS <- PbP.WAS[filt5, ]
+
+PTS5 <- sapply(lineup,
+               function(x) {
+               filt <- subPbP.WAS$player==x
+               sum(subPbP.WAS$points[filt], na.rm=T)
+               })
+
+inequality(PTS5,nplayer=5)
+```
+
+```{r}
+PbP.WAS.TOR <- subset(PbP, team=="WAS" & oppTeam=="TOR")
+
+filt5.2 <- apply(PbP.WAS.TOR[, 4:13], 1,
+               function(x) {
+               x <- as.character(x)
+               sum(x %in% lineup)==5
+               })
+
+subPbP.WAS.TOR <- PbP.WAS.TOR[filt5.2, ]
+
+PTS5 <- sapply(lineup,
+               function(x) {
+               filt <- subPbP.WAS.TOR$player==x
+               sum(subPbP.WAS.TOR$points[filt], na.rm=T)
+               })
+
+inequality(PTS5,nplayer=5)
+```
+
+## Shot charts
+```{r}
+#unique(PbP$player)
+subdata <- subset(PbP, player=="Stephen Curry")
+subdata$xx <- subdata$original_x/10
+subdata$yy <- subdata$original_y/10-41.75
+```
+
+```{r}
+shotchart(data=subdata, x="xx", y="yy", type=NULL,
+          scatter=TRUE)
+```
+
+```{r}
+shotchart(data=subdata, x="xx", y="yy", z="result", type=NULL,
+          scatter=TRUE)
+```
+
+```{r}
+shotchart(data=subdata, x="xx", y="yy", z="playlength", 
+          num.sect=5, type="sectors", scatter = TRUE)
+```
+
+```{r}
+shotchart(data=subdata, x="xx", y="yy", z="playlength", 
+          num.sect=5, type="sectors", scatter=FALSE, result="result")
+```
+
+
+
+# PATTERN IN DATA
+## Statistical dependence
+```{r}
+PbP <- PbPmanipulation(PbP.BDB)
+
+PbP.GSW <- subset(PbP, team=="GSW")
+
+ev <- c("ejection","end of period","jump ball",
+        "start of period","unknown","violation",
+        "timeout","sub","foul","turnover")
+
+event.unsel <- which(PbP.GSW$event_type %in% ev)
+
+PbP.GSW.ev <- PbP.GSW[-event.unsel,]
+
+attach(PbP.GSW.ev)
+T <- table(oppTeam, event_type, exclude=ev)
+detach(PbP.GSW.ev)
+
+assocstats(T)
+```
+
+## Mean Dependence
+```{r}
+FF <- fourfactors(Tbox, Obox)
+attach(Tbox)
+attach(FF)
+```
+
+```{r}
+df_stats <- data.frame(PTS, P2M, P3M, FTM, REB=OREB+DREB, AST, STL, BLK, ORtg, DRtg)
+detach(Tbox)
+detach(FF)
+```
+
+```{r}
+Playoff <- Tadd$Playoff
+
+eta <- sapply(df_stats, function(Y){
+  cm <- round(tapply(Y, Playoff, mean), 1)
+  eta2 <- etaSquared(aov(Y~Playoff))[1]*100
+  c(cm, round(eta2, 2))
+}) %>%
+  t() %>%
+  as.data.frame() %>%
+  rename(No=N, Yes=Y, eta2=V3) %>%
+  rownames_to_column('rownm') %>%
+  arrange(-eta2) %>%
+  column_to_rownames('rownm')
+
+eta
+```
+
+## Correlation
+```{r}
+df_ast_tov <- subset(Pbox, MIN>=500)
+attach(df_ast_tov)
+ast_tov <- data.frame(AST, TOV)/MIN
+detach(df_ast_tov)
+
+cor(ast_tov$AST, ast_tov$TOV)
+```
+ˆ
+```{r}
+cor(rank(ast_tov$AST), rank(ast_tov$TOV))
+```
+
+```{r}
+cor(ast_tov$AST, ast_tov$TOV, method="spearman")
+```
+
+```{r}
+cor(ast_tov)
+```
+
+## Linear correlation among variables
+```{r}
+data <- merge(Pbox, Tadd, by="Team")
+data <- subset(data, MIN >= 500)
+
+attach(data)
+df_off <- data.frame(
+  Player = data$Player,
+  PTS = data$PTS / data$MIN,
+  P3M = data$P3M / data$MIN,
+  P2M = data$P2M / data$MIN,
+  REB = (data$OREB + data$DREB) / data$MIN,
+  AST = data$AST / data$MIN,
+  TOV = data$TOV / data$MIN,
+  STL = data$STL / data$MIN,
+  BLK = data$BLK / data$MIN,
+  Playoff = data$Playoff
+)
+detach(data)
+
+str(df_off)
+```
+
+```{r}
+numeric_columns <- sapply(df_off, is.numeric)
+
+corrmatrix <- corranalysis(df_off[,2:9], threshold=0.5)
+plot(corrmatrix)
+```
+
+```{r}
+scatterplot(df_off, data.var=2:9, z.var="Playoff", 
+            diag=list(continuous="blankDiag"))
+```
+
+```{r}
+ggpairs(df_off, columns = 2:9, mapping = aes(color = Playoff)) +
+  theme_bw()
+```
+
+## Individual cases according to their similarity
+```{r}
+attach(Pbox)
+data2 <- data.frame(PTS, P3M, P2M, REB=OREB+DREB,
+                   AST, TOV, STL, BLK)
+detach(Pbox)
+data2 <- subset(data2, Pbox$MIN>=1500)
+id <- Pbox$Player[Pbox$MIN>=1500]
+```
+
+```{r}
+# Multidimensional scaling
+mds <- MDSmap(data2)
+```
+```{r}
+plot(mds, labels=id)
+```
+
+```{r}
+selp <- which(id=="LeBron James" | id=="Kevin Durant" |
+              id=="Jayson Tatum" | id=="Nikola Jokic" |
+              id=="Andrew Wiggins")
+
+plot(mds, labels=id, subset=selp, col.subset="red")
+```
+
+## Network Relationship
+# Cleveland
+```{r}
+PbP <- PbPmanipulation(PbP.BDB)
+
+PbP.CLE <- subset(PbP, team=="CLE")
+
+netdata <- assistnet(PbP.CLE)
+```
+
+```{r}
+set.seed(7)
+plot(netdata)
+```
+
+```{r}
+plot(netdata, layout="circle", edge.thr=1)
+```
+
+#Golden State Warriors
+```{r}
+PbP.GSW <- subset(PbP, team=="GSW")
+
+netdataGSW <- assistnet(PbP.GSW)
+
+cols <- paste0(c("a","h"), rep(1:5,each=2))
+
+PbP.GSW.DG0 <- PbP.GSW[!apply(PbP.GSW[,cols], 1, "%in%",
+                       x="Draymond Green"),]
+netdata.DG0 <- assistnet(PbP.GSW.DG0)
+
+set.seed(1)
+plot(netdata.DG0)
+```
+
+```{r}
+PbP.GSW.DG0 <- subset(PbP.GSW.DG0,
+                      ShotType=="2P" | ShotType=="3P")
+
+p0 <- mean(PbP.GSW.DG0$points)
+pl0 <- mean(PbP.GSW.DG0$playlength)
+
+PbP.GSW.DG1 <- PbP.GSW[apply(PbP.GSW[,cols], 1, "%in%",
+                       x="Draymond Green"),]
+PbP.GSW.DG1 <- subset(PbP.GSW.DG1,
+                      ShotType=="2P" | ShotType=="3P")
+
+p1 <- mean(PbP.GSW.DG1$points)
+pl1 <- mean(PbP.GSW.DG1$playlength)
+
+plot(netdataGSW, layout="circle", edge.thr=20,
+     node.col="FGPTS_AST", node.size="ASTPTS")
+```
+
+```{r}
+plot(netdataGSW, layout="circle", edge.thr=20,
+     node.col="FGPTS", node.size="FGPTS_ASTp")
+```
+
+```{r}
+TAB <- netdataGSW$assistTable
+N <- netdataGSW$nodeStats
+
+names(N)[1] <- "Player"
+
+data3 <- merge(N, Pbox, by="Player")
+
+mypal <- colorRampPalette(c("blue","yellow","red"))
+
+scatterplot(data3, data.var=c("FGM","FGM_ASTp"),
+            z.var="MIN", labels=data3$Player,
+            palette=mypal, repel_labels=TRUE)
+```
+
+```{r}
+sel <- which(data3$MIN > 984)
+print(sel)
+dim(TAB)
+tab <- TAB[sel, sel]
+
+no.pl <- nrow(tab)
+
+pR <- pM <- vector(no.pl, mode="list")
+
+GiniM <- array(NA, no.pl)
+GiniR <- array(NA, no.pl)
+
+for (pl in 1:no.pl) {
+     ineqplM <- inequality(tab[pl,], npl=no.pl)
+     GiniM[pl] <- ineqplM$Gini
+     ineqplR <- inequality(tab[,pl], npl=no.pl)
+     GiniR[pl] <- ineqplR$Gini
+     title <- rownames(tab)[pl]
+     pM[[pl]] <- plot(ineqplM, title=title)
+     pR[[pl]] <- plot(ineqplR, title=title)
+}
+```
+
+```{r}
+grid.arrange(grobs=pM, nrow=2)
+```
+
+```{r}
+grid.arrange(grobs=pR, nrow=2)
+```
+
+```{r}
+assocstats(tab)
+```
+
+```{r}
+XX <- data.frame(N[sel,], GiniM, GiniR)
+
+labs <- c("Gini Index for assists made",
+          "Gini Index for assists received",
+          "Assists received", "Assists made")
+
+bubbleplot(XX, id="Player", x="GiniM", y="GiniR",
+           col="FGM_AST", size="AST",
+           labels=labs, text.size=4)
+```
+
+```{r}
+net1 <- as_tbl_graph(netdata$assistNet)
+class(net1) <- "igraph"
+centr_degree(net1)
+```
+
+```{r}
+alpha_centrality(net1)
+```
+
+```{r}
+closeness(net1, mode="all")
+```
+
+```{r}
+betweenness(net1)
+```
+
+## Estimate density events
+### Density with respect to a concurrent variable
+```{r}
+PbP <- PbPmanipulation(PbP.BDB)
+unique(PbP$team)
+
+data.team.UTA <- subset(PbP, team=="UTA" & result!="")
+data.opp <- subset(PbP, team!="UTA" & result!="")
+
+densityplot(data=data.team.UTA, shot.type="2P",
+            var="periodTime", best.scorer=TRUE)
+```
+
+```{r}
+densityplot(data=data.team.UTA, shot.type="2P",
+            var="totalTime", best.scorer=TRUE)
+```
+
+```{r}
+densityplot(data=data.team.UTA, shot.type="2P",
+            var="playlength", best.scorer=TRUE)
+```
+
+```{r}
+densityplot(data=data.team.UTA, shot.type="2P",
+            var="shot_distance", best.scorer=TRUE)
+```
+
+```{r}
+densityplot(data=data.opp, shot.type="2P",
+            var="periodTime", best.scorer=TRUE)
+```
+
+```{r}
+densityplot(data=data.opp, shot.type="2P",
+            var="totalTime",best.scorer=TRUE)
+```
+
+```{r}
+densityplot(data=data.opp, shot.type="2P",
+            var="playlength", best.scorer=TRUE)
+```
+
+```{r}
+densityplot(data=data.opp, shot.type="2P",
+            var="shot_distance", best.scorer=TRUE)
+```
+
+```{r}
+LJ <- subset(PbP, player=="LeBron James" & result!="")
+AD <- subset(PbP, player=="Anthony Davis" & result!="")
+JH <- subset(PbP, player=="James Harden" & result!="")
+```
+
+```{r}
+# James Harden
+densityplot(data=JH, shot.type="field",
+            var="playlength")
+
+densityplot(data=JH, shot.type="field",
+            var="shot_distance")
+```
+
+```{r}
+# Anthony Davis
+densityplot(data=AD, shot.type="field",
+            var="playlength")
+
+densityplot(data=AD, shot.type="field",
+            var="shot_distance")
+```
+
+```{r}
+# LeBron James
+densityplot(data=LJ, shot.type="field",
+            var="playlength")
+
+densityplot(data=LJ, shot.type="field",
+            var="shot_distance")
+```
+
+## Density in Space
+```{r}
+PbP <- PbPmanipulation(PbP.BDB)
+
+PbP$xx <- PbP$original_x/10
+PbP$yy <- PbP$original_y/10 - 41.75
+
+LJ <- subset(PbP, player=="LeBron James")
+
+shotchart(data=LJ, x="xx", y="yy",
+          type="density-polygons")
+```
+
+```{r}
+shotchart(data=LJ, x="xx", y="yy", type="density-raster")
+```
+
+```{r}
+shotchart(data=LJ, x="xx", y="yy", type="density-hexbin")
+```
+
+```{r}
+shotchart(data=LJ, x="xx", y="yy",
+          type="density-polygons", scatter=TRUE)
+```
+
+```{r}
+shotchart(data=LJ, x="xx", y="yy", type="density-raster",
+          scatter=TRUE, pt.col="tomato", pt.alpha=0.1)
+```
+
+```{r}
+shotchart(data=LJ, x="xx", y="yy", type="density-hexbin",
+          nbins=50, palette="bwr")
+```
+
+### Joint density of two variables
+```{r}
+data.density <- subset(Pbox, MIN>=500)
+
+attach(data.density)
+X.density <- data.frame(PTS, P3M, P2M, REB=OREB+DREB, AST)/MIN
+detach(data.density)
+
+scatterplot(X.density, data.var=1:5,
+            lower=list(continuous="density"),
+            diag=list(continuous="densityDiag"))
+```
+
+# FINDING GROUP IN DATA
+## Cluster Analysis
+```{r}
+FF <- fourfactors(Tbox,Obox)
+
+OD.Rtg <- FF$ORtg/FF$DRtg
+
+F1.r <- FF$F1.Off/FF$F1.Def
+
+F2.r <- FF$F2.Def/FF$F2.Off
+
+F3.Off <- FF$F3.Off
+
+F3.Def <- FF$F3.Def
+
+P3M <- Tbox$P3M
+
+STL.r <- Tbox$STL/Obox$STL
+
+data <- data.frame(OD.Rtg, F1.r, F2.r, F3.Off, F3.Def,
+                   P3M, STL.r)
+```
+
+```{r}
+set.seed(123)
+
+kclu1 <- kclustering(data)
+
+plot(kclu1)
+```
+
+```{r}
+set.seed(123)
+
+kclu2 <- kclustering(data, labels=Tbox$Team, k=5)
+
+plot(kclu2)
+```
+
+```{r}
+kclu2.PO <- table(kclu2$Subjects$Cluster, Tadd$Playoff)
+
+kclu2.W <- tapply(Tbox$W, kclu2$Subjects$Cluster, mean)
+
+Xbar <- data.frame(cluster=c(1:5), N=kclu2.PO[,1],
+                   Y=kclu2.PO[,2], W=kclu2.W)
+
+barline(data=Xbar, id="cluster", bars=c("N","Y"),
+        labels.bars=c("Playoff: NO","Playoff: YES"),
+        line="W", label.line="average wins",
+        decreasing=FALSE)
+
+ggplot(data = Xbar, aes(x = cluster)) +
+  geom_bar(aes(y = N, fill = "Playoff: NO"), stat = "identity", position = "dodge") +
+  geom_bar(aes(y = Y, fill = "Playoff: YES"), stat = "identity", position = "dodge") +
+  geom_line(aes(y = W * 10, group = 1, color = "average wins"), size = 1) +
+  geom_text(aes(y = N + 10, label = N), vjust = -0.2, size = 3, position = position_dodge(width = 0.9)) +
+  geom_text(aes(y = Y + 10, label = Y), vjust = -0.5, size = 6, position = position_dodge(width = 0.9)) +
+  scale_fill_manual(values = c("Playoff: NO" = "red", "Playoff: YES" = "green")) +
+  scale_color_manual(values = c("average wins" = "blue")) +
+  labs(
+    x = "Cluster",
+    y = "Count",
+    fill = "",
+    color = "",
+    title = "Barline Chart with Labels",
+    subtitle = "Comparison of No, Yes, and Average Wins by Cluster"
+  ) +
+  theme_minimal()
+# The number with a bigger size are for "Yes' and smaller size are for "No"
+```
+
+```{r}
+cluster <- as.factor(kclu2$Subjects$Cluster)
+
+Xbubble <- data.frame(Team=Tbox$Team, PTS=Tbox$PTS,
+                      PTS.Opp=Obox$PTS, cluster,
+                      W=Tbox$W)
+
+labs <- c("PTS", "PTS.Opp", "cluster", "Wins")
+
+bubbleplot(Xbubble, id="Team", x="PTS", y="PTS.Opp",
+           col="cluster", size="W", labels=labs)
+```
+
+## K-means clustering of Toronto Raptors shots
+```{r}
+PbP <- PbPmanipulation(PbP.BDB)
+
+shots.TOR <- subset(PbP,
+                !is.na(PbP$shot_distance) &
+                PbP$team=="TOR")
+shots.TOR <- mutate_if(shots.TOR, is.factor, droplevels)
+
+attach(shots.TOR)
+data.kclu <- data.frame(PTS=points, DIST=shot_distance,
+                   TIMEQ=periodTime, PL=playlength)
+detach(shots.TOR)
+
+set.seed(1)
+kclu.TOR <- kclustering(data.kclu, algorithm="MacQueen",
+                     nclumax=15, iter.max=500)
+plot(kclu.TOR)
+```
+
+```{r}
+set.seed(246)
+
+kclu.TOR2 <- kclustering(data.kclu, algorithm="MacQueen",
+                     iter.max=500, k=6)
+
+plot(kclu.TOR2)
+```
+
+```{r}
+cluster <- as.factor(kclu.TOR2$Subjects$Cluster)
+shots.TOR <- data.frame(shots.TOR, cluster)
+shots.TOR$xx <- shots.TOR$original_x/10
+shots.TOR$yy <- shots.TOR$original_y/10 - 41.75
+
+no.clu.TOR <- 6
+
+p1 <- p2 <- vector(no.clu.TOR, mode="list")
+
+for (k in 1:no.clu.TOR) {
+     shots.k <- subset(shots.TOR,cluster==k)
+     p1[[k]] <- shotchart(data=shots.k, x="xx", y="yy",
+                          z="result", type=NULL,
+                          scatter = TRUE,
+                          drop.levels=FALSE)
+p2[[k]] <- shotchart(data=shots.k, x="xx", y="yy",
+                     z="periodTime",
+                     col.limits=c(0,720),
+                     result="result", num.sect=5,
+                     type="sectors", scatter=FALSE)
+     }
+```
+
+```{r}
+grid.arrange(grobs=p1, nrow=3)
+```
+
+```{r}
+grid.arrange(grobs=p2, nrow=3)
+```
+
+```{r}
+shots.pl <- table(shots.TOR$player, shots.TOR$cluster)
+
+Xineq <- as.data.frame.matrix(shots.pl)
+
+no.clu.TOR <- 6
+
+p <- vector(no.clu.TOR, mode="list")
+
+for (k in 1:no.clu.TOR) {
+     ineqC <- inequality(Xineq[,k], npl=nrow(Xineq))
+     title <- paste("Cluster", k)
+     p[[k]] <- plot(ineqC, title=title)
+}
+
+grid.arrange(grobs=p, nrow=3)
+```
+
+```{r}
+shots.perc <- shots.pl/rowSums(shots.pl)
+
+Xbar.TOR <- data.frame(player=rownames(shots.pl),
+                   rbind(shots.perc),
+                   FGA=rowSums(shots.pl))
+
+labclusters <- c("Cluster 1","Cluster 2","Cluster 3",
+                 "Cluster 4","Cluster 5","Cluster 6")
+
+barline(data=Xbar.TOR, id="player", line="FGA",
+        bars=c("X1","X2","X3","X4","X5","X6"),
+        order.by="FGA", label.line="Field goals attempted",
+        labels.bars=labclusters)
+
+ggplot(Xbar.TOR, aes(x=player, y=FGA)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=X1), vjust=-0.3, size=3.5) +
+  theme_minimal()
+
+ggplot(Xbar.TOR, aes(x=player, y=X1)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=X1), vjust=-0.3, size=3.5) +
+  theme_minimal()
+
+ggplot(Xbar.TOR, aes(x=player, y=X2)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=X1), vjust=-0.3, size=3.5) +
+  theme_minimal()
+
+ggplot(Xbar.TOR, aes(x=player, y=X3)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=X1), vjust=-0.3, size=3.5) +
+  theme_minimal()
+
+ggplot(Xbar.TOR, aes(x=player, y=X4)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=X1), vjust=-0.3, size=3.5) +
+  theme_minimal()
+
+ggplot(Xbar.TOR, aes(x=player, y=X5)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=X1), vjust=-0.3, size=3.5) +
+  theme_minimal()
+
+ggplot(Xbar.TOR, aes(x=player, y=X6)) + 
+  geom_bar(stat="identity") +
+  geom_text(aes(label=X1), vjust=-0.3, size=3.5) +
+  theme_minimal()
+```
+
+## Hierarchical clustering of NBA players
+```{r}
+rm(list=ls())
+
+attach(Pbox)
+df <- data.frame(PTS, P3M, REB=OREB+DREB,
+                   AST, TOV, STL, BLK, PF)
+detach(Pbox)
+
+df <- subset(df, Pbox$MIN>=1500)
+
+ID <- Pbox$Player[Pbox$MIN>=1500]
+
+hclu <- hclustering(df)
+plot(hclu)
+```
+
+```{r}
+hclu2 <- hclustering(df, labels=ID, k=9)
+
+plot(hclu2, profiles=TRUE)
+```
+
+```{r}
+plot(hclu2, rect=TRUE, colored.branches=TRUE,
+     cex.labels=0.5)
+```
+
+```{r}
+Pbox.subset <- subset(Pbox, MIN>=1500)
+
+MIN <- Pbox.subset$MIN
+
+X <- data.frame(hclu2$Subjects, scale(df), MIN)
+
+dvar <- c("PTS","P3M","REB","AST",
+          "TOV","STL","BLK","PF")
+svar <- "MIN"
+
+yRange <- range(X[,dvar])
+
+sizeRange <- c(1500, 3300)
+
+no.clu <- 9
+
+p <- vector(no.clu, mode="list")
+
+for (k in 1:no.clu) {
+     XC <- subset(X, Cluster==k)
+     vrb <- variability(XC[,3:11], data.var=dvar,
+                        size.var=svar, weight=FALSE,
+                        VC=FALSE)
+     title <- paste("Cluster", k)
+     p[[k]] <- plot(vrb, size.lim=sizeRange, ylim=yRange,
+               title=title, leg.pos=c(0,1),
+               leg.just=c(-0.5,0),
+               leg.box="vertical",
+               leg.brk=seq(1500,3000,500),
+               leg.title.pos="left", leg.nrow=1,
+               max.circle=7)
+     }
+
+grid.arrange(grobs=p, ncol=3)
+```
+
+# LINEAR MODELS
+## Simple linear regression
+```{r}
+rm(list=ls())
+
+Pbox.sel <- subset(Pbox, MIN>=500)
+
+attach(Pbox.sel)
+x <- AST/MIN
+y <- TOV/MIN
+pl <- Player
+detach(Pbox.sel)
+
+out <- simplereg(x, y, type="lin")
+xtitle <- "AST per minute"
+ytitle <- "TOV per minute"
+plot(out, xtitle=xtitle, ytitle=ytitle)
+```
+
+```{r}
+selp <- which(pl=="Kyrie Irving")
+plot(out, labels=pl, subset=selp, xtitle=xtitle,
+     ytitle=ytitle)
+```
+
+```{r}
+plot(out, labels=pl, subset="quant",
+     Lx=0, Ux=0.97, Ly=0, Uy=0.97,
+     xtitle=xtitle, ytitle=ytitle)
+```
+
+## Non Parametric Regression
+### Polynomial regression
+```{r}
+rm(list=ls())
+
+Pbox.sel <- subset(Pbox, MIN>=500)
+
+attach(Pbox.sel)
+x <- (DREB+OREB)/MIN
+y <- P3M/MIN
+pl <- Player
+detach(Pbox.sel)
+
+out <- simplereg(x, y, type="lin")
+xtitle <- "REB per minute"
+ytitle <- "P3M per minute"
+plot(out, xtitle=xtitle, ytitle=ytitle)
+```
+
+```{r}
+out <- simplereg(x, y, type="pol")
+plot(out, labels=pl, subset="quant",
+     Lx=0, Ux=0.90, Ly=0, Uy=0.95,
+     xtitle=xtitle, ytitle=ytitle)
+```
+
+### Gaussian kernel smoothing
+```{r}
+data <- subset(Pbox, MIN>=500)
+
+attach(data)
+df <- data.frame(PTS, P3M, P2M, REB=OREB+DREB, AST)/MIN
+detach(data)
+
+scatterplot(df, data.var=1:5,
+lower=list(continuous="smooth_loess"),
+diag=list(continuous="barDiag"))
+```
+
+###  Estimation of scoring probability
+```{r}
+PbP <- PbPmanipulation(PbP.BDB)
+
+PbP.GSW <- subset(PbP, team=="GSW" & result!="")
+
+p1 <- scoringprob(data=PbP.GSW, shot.type="3P",
+                  var="playlength")
+
+p2 <- scoringprob(data=PbP.GSW, shot.type="3P",
+                  var="periodTime", bw=300)
+
+grid.arrange(p1, p2, ncol=2)
+```
+
+```{r}
+pl1 <- c("Kevin Durant","Stephen Curry","Klay Thompson")
+
+p1 <- scoringprob(data=PbP.GSW, shot.type="2P",
+players=pl1, var="shot_distance",
+col.team="gray")
+
+pl2 <- c("Kevin Durant","Stephen Curry")
+
+p2 <- scoringprob(data=PbP.GSW, shot.type="2P",
+players=pl2, var="totalTime", bw=1500,
+col.team="gray")
+
+grid.arrange(p1, p2, ncol=2)
+```
+
+### Estimation of expected points
+```{r}
+mypal <- colorRampPalette(c("red","green"))
+
+expectedpts(data=PbP.GSW, players=pl1,
+            col.team="gray", palette=mypal,
+            col.hline="gray")
+```
+
+```{r}
+Pbox.GSW <- subset(Pbox, PTS>=500 &
+                   Team=="Golden State Warriors")
+
+pl.gsw <- Pbox.GSW$Player
+
+mypal <- colorRampPalette(c("red","green"))
+
+expectedpts(data=PbP.GSW, players=pl.gsw,
+            col.team="gray", palette=mypal,
+            col.hline="gray")
+```
+
+```{r}
+expectedpts(data=PbP.GSW, bw=300, players=pl.gsw,
+            col.team="gray", palette=mypal,
+            col.hline="gray", var="periodTime",
+            xlab="Period time")
+```
+
+```{r}
+top <- subset(Tadd, Playoff=="Y" & team!="GSW")$team
+bot <- subset(Tadd, Playoff=="N")$team 
+ 
+bot_top <- function(X, k) {
+           dts <- subset(subset(X, oppTeam %in% get(k)),
+                         team=="GSW")
+           dts$player <- paste(dts$player, k)
+           return(dts)
+           }
+
+PbP.GSW2 <- rbind(bot_top(PbP, "top"), bot_top(PbP, "bot"))
+
+pl.gsw2 <- c("Stephen Curry top","Stephen Curry bot",
+        "Kevin Durant top", "Kevin Durant bot")
+
+mypal <- colorRampPalette(c("red","green"))
+
+expectedpts(data=PbP.GSW2, bw=1200, players=pl.gsw2,
+            col.team="gray", palette=mypal,
+            col.hline="gray", var="totalTime",
+            xlab="Total time", x.range=NULL)
+```
+
