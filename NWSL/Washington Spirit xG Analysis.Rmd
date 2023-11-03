@@ -1,0 +1,195 @@
+---
+title: "Washington Spirit - xG Analysis"
+author: "Karl Mbouombouo"
+date: "2023-11-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Packages
+
+```{r cars, message=FALSE}
+library(rvest)
+library(tidyverse) 
+library(dplyr)
+library(zoo)
+library(magrittr)
+library(reshape2)
+library(ggplot2)
+library(ggh4x)
+```
+
+## Data
+```{r pressure}
+# URL of the website 
+url <- "https://fbref.com/en/squads/e442aad0/Washington-Spirit-Stats" 
+
+# Read the HTML code of the page 
+html_code <- read_html(url) 
+
+# Use the html_nodes function to extract the table 
+table_html <- html_code %>% html_nodes("table") %>% .[[2]] 
+
+# Use the html_table function to convert the table 
+# HTML code into a data frame 
+df <- table_html %>% html_table() 
+
+# Inspect the first few rows of the data frame 
+head(df)
+```
+
+## Data Manipulation
+```{r}
+# Remove column
+df = select(df, -c('Time', 'Day', 'Result', 'Poss', 'Attendance', 'Captain', 
+                   'Formation', 'Referee', 'Match Report', 'Notes', 'GA', 'GF'))
+head(df)
+
+# Add column home team
+df$Home <- "Washington Spirit"
+
+# for loop to update "Home" values
+for (i in 1:nrow(df)) {
+  if (df$Venue[i] == "Away") {
+    df$Home[i] <- df$Opponent[i]
+  }
+}
+
+# for loop to update "Opponent" values
+for (i in 1:nrow(df)) {
+  if (df$Venue[i] == "Away") {
+    df$Opponent[i] = "Washington Spirit"
+  }
+}
+
+head(df)
+                    
+# Data from regular season & Challenge Cup
+df_season <- df[df$Comp == 'NWSL', ]
+df_cup <- df[df$Comp == 'NWSL Challenge Cup', ]
+df_cup = select(df_cup, -('Round'))
+
+head(df_season)
+head(df_cup)
+```
+### Split Home and Away games
+```{r}
+# Create a copy of the original data frame
+home_df <- df_season
+
+# Melt the data frame
+home_df <- melt(home_df, id.vars = c("Date", "Home", "Opponent"))
+
+home_df <- home_df[home_df$Home == 'Washington Spirit', ]
+
+colnames(home_df)[4] <- "Variable"
+
+home_df <- home_df %>%
+  filter(grepl("xG|xGA", Variable, ignore.case = TRUE))
+
+head(home_df)
+```
+
+```{r}
+# Create a copy of the original data frame
+away_df <- df_season
+
+# Melt the data frame
+away_df <- melt(away_df, id.vars = c("Date", "Home", "Opponent"))
+
+away_df <- away_df[away_df$Home != 'Washington Spirit', ]
+
+colnames(away_df)[4] <- "Variable"
+
+away_df <- away_df %>%
+  filter(grepl("xG|xGA", Variable, ignore.case = TRUE))
+
+head(away_df)
+```
+
+
+```{r}
+# Join home_df and away_df
+df2 <- rbind(home_df, away_df)
+rownames(df2) <- NULL
+```
+
+## Washington Spirit (WS)*
+```{r}
+df2 <- df2 %>% arrange(Date)
+df2$value <- as.numeric(df2$value)
+
+# xG conceded and xG created
+Y_for <- df2[df2$Variable == "xG", , drop = FALSE]
+Y_ag <- df2[df2$Variable == "xGA", , drop = FALSE]
+X <- seq_along(Y_for$value)
+
+# Compute the rolling average (min_periods is used for the partial average)
+# Here we're using a 10 game rolling average
+Y_for_avg <- rollmean(Y_for$value, k = 10, fill = NA, align = "right")
+
+Y_ag_avg <- rollmean(Y_ag$value, k = 10, fill = NA, align = "right")
+
+str(Y_for_avg)
+
+# Calculate the mean of all numeric values in the "value" column
+mean_Y_for <- mean(Y_for$value, na.rm = TRUE)
+mean_Y_ag <- mean(Y_ag$value, na.rm = TRUE)
+
+# Replace "NA" values with the mean
+Y_for_avg[is.na(Y_for_avg)] <- mean_Y_for
+Y_ag_avg[is.na(Y_ag_avg)] <- mean_Y_ag
+```
+
+## Charts
+```{r, warning=FALSE}
+data <- data.frame(X = X, Y_for = Y_for, Y_ag = Y_ag)
+
+plot <- ggplot(data, aes(x = X)) +
+  geom_line(aes(y = Y_for.value, color = "xG created"), size = 1) +
+  geom_line(aes(y = Y_ag.value, color = "xG conceded"), size = 1) +
+  labs(color = "Legend") +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  scale_color_manual(values = c("xG created" = "blue", "xG conceded" = "red"))
+
+plot <- plot + ylab("xG")
+
+# Remove top & right spines and change the color
+plot <- plot + theme_minimal() + 
+  theme(
+    axis.line = element_line(color = "grey"),  # Change axis lines' color
+    panel.grid.minor = element_line(color = "lightgrey", linetype = "dotted"),  # Set minor grid lines
+    panel.grid.major = element_line(color = "lightgrey", linetype = "dotted")  # Set major grid lines
+  )
+
+# Modify tick parameters
+plot <- plot + theme_minimal() +
+  theme(
+    axis.text = element_text(color = "grey", size = 6),  # Set label color and size
+    axis.ticks = element_line(color = "grey", linewidth = 0.2, lineend = "butt")  # Set tick color and width
+  )
+
+# Define the x-coordinate for the division between seasons (assuming it's at game 22)
+division_nwsl <- 22
+
+# Add a vertical line to mark the division between seasons
+plot <- plot + geom_vline(xintercept = division_nwsl, linetype = "dashed", size = 1.25, color = "grey")
+
+# Set x-axis major tick positions to 19 game multiples
+plot <- plot + scale_x_continuous(breaks = seq(0, max(X), by = 19))
+
+# Set y-axis major tick positions to 0.5 xG multiples
+plot <- plot + scale_y_continuous(breaks = seq(0, max(Y_for$value), by = 0.5))
+
+# Set y-axis lower limit to 0
+plot <- plot + coord_cartesian(ylim = c(0, max(Y_for$value)))
+
+# Adjust the legend's font size
+plot <- plot + theme(legend.text = element_text(size = 6))
+
+plot
+```
