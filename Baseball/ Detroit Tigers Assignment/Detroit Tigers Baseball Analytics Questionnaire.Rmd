@@ -1,0 +1,280 @@
+---
+title: "Detroit Tigers Baseball Analytics Questionnaire"
+author: "Karl Mbouombouo"
+date: "2023-11-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Packages
+```{r, message=FALSE}
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(DescTools)
+library(kableExtra)
+```
+
+## Data
+```{r, results='hide', warning=FALSE, message=FALSE}
+df <- read_csv("~/Desktop/R-Projects/Baseball Analytics/Detroit Tigers Baseball Analytics/AnalyticsQuestionnairePitchData.csv")
+
+head(df)
+
+names(df)
+
+# Check for NA values in each column
+na_counts <- colSums(is.na(df))
+
+# Identify columns with NA values
+columns_with_na <- names(na_counts[na_counts > 0])
+
+# Print the columns with NA values
+print(columns_with_na)
+
+# Replace NA values with column means
+df <- df %>%
+  mutate_all(funs(ifelse(is.na(.), mean(., na.rm = TRUE), .)))
+
+# Print data frame
+df
+```
+
+```{r}
+game1 <- df %>% filter(GamePk == 1)
+game2 <- df %>% filter(GamePk == 2)
+```
+
+## GAME 1
+```{r}
+summary(game1)
+
+# Pitch counts
+## Mean
+mean(game1$ReleaseSpeed, na.rm = TRUE)
+## Total pitches
+nrow(game1)
+
+## Total strikes
+called_strike_count1 <- sum(game1$PitchCall == "called_strike")
+swinging_strike_count1 <- sum(game1$PitchCall == "swinging_strike")
+strikeout_count1 <- sum(game1$PitchCall == "strikeout")
+called_strike_count1+swinging_strike_count1+strikeout_count1
+
+## Total ball
+sum(game1$PitchCall == "ball")
+
+# Pitch type
+## Most common pitch type
+pitch_count1 <- table(game1$PitchType)
+names(pitch_count1)[which.max(pitch_count1)]
+
+## Others pitch type
+unique(game1$PitchType)
+
+# Bar plot of the outcome distribution
+pitch_call_counts1 <- as.data.frame(table(game1$PitchCall))
+ggplot(pitch_call_counts1, aes(x = Var1, y = Freq)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = Freq), vjust = -0.5, color = "black", size = 3) +
+  labs(title = "Pitch Call Distribution (Game 1)", x = "Pitch Call", y = "Count") +
+  theme_minimal()
+
+# Plotting Histogram of Release Speed with Normal Curve
+ggplot(game1, aes(x = ReleaseSpeed)) +
+  geom_histogram(binwidth = 1, fill = 'blue', color = 'white', aes(y = ..density..)) +
+  stat_function(fun = dnorm, args = list(mean = mean(game1$ReleaseSpeed), sd = sd(game1$ReleaseSpeed)),
+                color = 'red', size = 1) +
+  labs(title = 'Histogram of Release Speed with Normal Curve (Game 1)',
+       x = 'Release Speed (mph)', y = 'Density') +
+  theme_minimal()
+
+# Plotting Scatter Plot of Release Speed vs. Trajectory Effective Velocity
+ggplot(game1, aes(x = ReleaseSpeed, y = TrajectoryEffectiveVelocity)) +
+  geom_point(color = 'black') +
+  labs(title = 'Scatter Plot of Release Speed vs. Trajectory Effective Velocity (Game 1)',
+       x = 'Release Speed (mph)', y = 'Trajectory Effective Velocity') +
+  theme_minimal()
+```
+
+## GAME 2
+```{r}
+summary(game2)
+
+## Pitch counts
+# Mean
+mean(game2$ReleaseSpeed, na.rm = TRUE)
+
+#Total pitches
+nrow(game2)
+
+# Total strikes
+called_strike_count2 <- sum(game2$PitchCall == "called_strike")
+swinging_strike_count2 <- sum(game2$PitchCall == "swinging_strike")
+strikeout_count2 <- sum(game2$PitchCall == "strikeout")
+called_strike_count2+swinging_strike_count2+strikeout_count2
+
+# Total ball
+sum(game2$PitchCall == "ball")
+
+## Pitch type
+# Most common pitch type
+pitch_count2 <- table(game2$PitchType)
+names(pitch_count2)[which.max(pitch_count2)]
+
+# Others pitch type
+unique(game2$PitchType)
+
+## Bar plot of the outcome distribution
+pitch_call_counts2 <- as.data.frame(table(game2$PitchCall))
+ggplot(pitch_call_counts2, aes(x = Var1, y = Freq)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = Freq), vjust = -0.5, color = "black", size = 3) +
+  labs(title = "Pitch Call Distribution (Game 2)", x = "Pitch Call", y = "Count") +
+  theme_minimal()
+
+
+## Plotting Histogram of Release Speed with Normal Curve
+ggplot(game2, aes(x = ReleaseSpeed)) +
+  geom_histogram(binwidth = 1, fill = 'blue', color = 'white', aes(y = ..density..)) +
+  stat_function(fun = dnorm, args = list(mean = mean(game2$ReleaseSpeed), sd = sd(game2$ReleaseSpeed)),
+                color = 'red', size = 1) +
+  labs(title = 'Histogram of Release Speed with Normal Curve (Game 2)',
+       x = 'Release Speed (mph)', y = 'Density') +
+  theme_minimal()
+
+# Plotting Scatter Plot of Release Speed vs. Trajectory Effective Velocity
+ggplot(game2, aes(x = ReleaseSpeed, y = TrajectoryEffectiveVelocity)) +
+  geom_point(color = 'black') +
+  labs(title = 'Scatter Plot of Release Speed vs. Trajectory Effective Velocity (Game 2)',
+       x = 'Release Speed (mph)', y = 'Trajectory Effective Velocity') +
+  theme_minimal()
+```
+
+
+#Statistics summary Entire Data
+```{r}
+summary(df)
+
+# Calculate the mean 
+mean_release_speed <- mean(df$ReleaseSpeed, na.rm = TRUE)
+mean_spin_rate <- mean(df$ReleaseSpinRate)
+mean_release_ex <- mean(df$ReleaseExtension)
+
+# Count occurrences in the PitchCall column
+ball_count <- sum(df$PitchCall == "ball")
+called_strike_count <- sum(df$PitchCall == "called_strike")
+swinging_strike_count <- sum(df$PitchCall == "swinging_strike")
+strikeout_count <- sum(df$PitchCall == "strikeout")
+strike_count <- called_strike_count+swinging_strike_count+strikeout_count
+home_run_count <- sum(df$PitchCall == "home_run")
+walk_count <- sum(df$PitchCall == "walk")
+
+# Histogram for Distribution of Release Speed
+hist(df$ReleaseSpeed, main = "Distribution of Release Speed", xlab = "Release Speed", col = "lightblue", border = "black")
+
+# Display the result
+cat("The distribution of release speed shows a left skewed distribution (negative skew), meaning the mode is greater than the mean and median, and the median is greater than the mean.", "\n")
+cat("The mean release speed across all pitches is: ", mean_release_speed, "\n")
+cat("The mean spin rate of all pitches is: ", mean_spin_rate, "\n")
+cat("The mean release extension of all pitches is: ", mean_release_ex, "\n")
+cat(ball_count, "were ball", "\n")
+cat(strike_count, "were strike", "\n")
+cat(home_run_count, "resulted in home runs", "\n")
+cat(walk_count, "were walk", "\n")
+```
+
+# Pitcher Summary Entire Data
+```{r}
+# Create relevant visualizations
+ggplot(df, aes(x = PitchType, y = ReleaseSpeed)) +
+  geom_boxplot() +
+  labs(title = "Distribution of Release Speed by Pitch Type")
+
+# Create a barplot for the distribution of pitch types
+ggplot(df, aes(x = PitchType, fill = PitchType)) +
+  geom_bar() +
+  labs(title = "Distribution of Pitch Types", x = "Pitch Type", y = "Count") +
+  theme_minimal()
+
+# Create a boxplot for the release speed of pitches by pitch type
+ggplot(df, aes(x = PitchType, y = ReleaseSpeed, fill = PitchType)) +
+  geom_boxplot() +
+  labs(title = "Release Speed of Pitches by Pitch Type", x = "Pitch Type", y = "Release Speed") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Create a boxplot for the release spin rate of pitches by pitch type
+ggplot(df, aes(x = PitchType, y = ReleaseSpinRate, fill = PitchType)) +
+  geom_boxplot() +
+  labs(title = "Release Spin Rate of Pitches by Pitch Type", x = "Pitch Type", y = "Release Spin Rate") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Summary statistics
+summary_pitcher_stats <- df %>%
+  group_by(PitcherId) %>%
+  summarise(
+    Mean_Ball = mean(Balls),
+    Mean_Strikes = mean(Strikes),
+    Mean_Out = mean(Outs),
+    Mean_ReleaseSpeed = mean(ReleaseSpeed),
+    Mean_ReleaseSpinRate = mean(ReleaseSpinRate),
+    Mean_ReleaseExtension = mean(ReleaseExtension)
+  )
+
+# Create a summary table
+summary_pitcher_table <- kable(summary_pitcher_stats, caption = "Summary Pitcher Statistics") %>% 
+  kable_styling()
+
+# Save the plots (modify file names as needed)
+ggsave("release_speed_comparison.png", width = 10, height = 6, units = "in")
+
+# Print the summary table
+summary_pitcher_table
+```
+
+# Batter Summary Entire Data
+```{r}
+# Create a barplot for the count of pitches by batter side
+ggplot(df, aes(x = BatterSide, fill = BatterSide)) +
+  geom_bar() +
+  labs(title = "Count of Pitches by Batter Side", x = "Batter Side", y = "Count") +
+  theme_minimal()
+
+# Create a boxplot for the Trajectory Effective Velocity of pitches by pitch type
+ggplot(df, aes(x = PitchType, y = TrajectoryEffectiveVelocity, 
+               fill = PitchType)) +
+  geom_boxplot() +
+  labs(title = "Trajectory Effective Velocity of Pitches by Pitch Type", x = "Pitch Type", 
+       y = "Trajectory Effective Velocity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Create a boxplot for the Trajectory Zone Speed of pitches by pitch type
+ggplot(df, aes(x = PitchType, y = TrajectoryZoneSpeed, 
+               fill = PitchType)) +
+  geom_boxplot() +
+  labs(title = "Trajectory Zone Speed of Pitches by Pitch Type", x = "Pitch Type", y = "Trajectory Zone Speed") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+summary_batter_stats <- df %>%
+  group_by(BatterId) %>%
+  summarise(
+    Mean_TrajectoryZoneSpeed = mean(TrajectoryZoneSpeed),
+    Mean_TrajectoryEffectiveVelocity = mean(TrajectoryEffectiveVelocity)
+  )
+
+summary_batter_stats <- kable(summary_batter_stats, caption = "Summary Batter Statistics") %>% 
+  kable_styling()
+
+# Save the plots (modify file names as needed)
+ggsave("release_trajectory_comparison.png", width = 10, height = 6, units = "in")
+
+summary_batter_stats
+```
+
