@@ -1,0 +1,233 @@
+---
+title: "Minnesota Twins - Business Intelligence & Analytics Project"
+author: "Karl Mbouombouo"
+date: "2023-12-01"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(viridis)
+library(forecast)
+```
+
+## Introduction
+In this analysis, we explore the connection between a baseball team's performance and fan attendance during August and September. Leveraging statistical methods, visualizations, and time series analysis, our goal is to reveal patterns and correlations that shed light on the factors influencing attendance. From time series plots to segmentation analysis, we aim to provide actionable insights into how team success impacts fan engagement.
+(PLEASE LOOK AT THE RMD FILE TO SEE THE ENTIRE CODE)
+
+## Data
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Daily Team Standngs Data
+dts <- read_csv("DailyTeamStandings.csv")
+
+# Baseball Games Data
+baseball_games <- read_csv("BaseballGames.csv")
+
+# Get the data only from Minnessota Twins, August and September
+dts_m <- subset(dts, Team_Name == "Twins")
+
+bg_m <- subset(baseball_games, Home_Team == "Twins")
+
+# Convert 'game_date' to Date type if it's not already in that format
+dts_m$Date <- as.Date(dts_m$Date, format="%m/%d/%Y")
+
+bg_m$Game_Time_Local <- as.Date(bg_m$Game_Time_Local, format="%m/%d/%Y")
+
+# Filter data for August and September
+dts_m <- dts_m[format(dts_m$Date, "%m") %in% c("08", "09"), ]
+
+bg_m <- bg_m[format(bg_m$Game_Time_Local, "%m") %in% c("08", "09"), ]
+
+# Convert multiple values to Numeric 
+bg_m$Attendance <- as.numeric(bg_m$Attendance)
+
+# Clean the Data by removing column that will not help
+dts_m = subset(dts_m, select = -c(Year, Team_Abbrev, Team_Name_Full, League_Name_Short, Division_Name_Full,
+                                   Clinched_Wildcard, Playoffs_Flag, Games_Back_Wildcard, Away_Win, Away_Loss,
+                                   Away_Games, Runs, Opponent_Runs))
+
+bg_m = subset(bg_m, select = -c(Game_ID, Double_Header, Double_Header_Type, Venue_Name, Venue_City, Venue_State,
+                                Turf_Type, Game_Description, Wp_First_Name, Wp_Team_Code, Lp_Last_Name, Lp_First_Name,
+                                Lp_Team_Code, Away_Team_Code, Away_Series_Nbr, Away_Score, Away_Hits, Away_Errors, Wp_Last_Name))
+
+colnames(bg_m)[colnames(bg_m) == "Game_Time_Local"] <- "Date"
+
+# Merge data frames based on the "Date" column
+df <- inner_join(bg_m, dts_m, by = "Date")
+```
+I made a strategic decision to narrow down our data set, focusing specifically on the months of August and September. This deliberate selection enables a more targeted and detailed analysis. In this refined data set, I have prioritized key columns that bear significance in our exploration of the relationship between a baseball team's performance and fan attendance. The selected columns include Date, Home_Team, Home_Score, Attendance, Place, Win, Loss, Win_Pct, and Streak. By honing in on these specific variables, our analysis gains precision, allowing us to derive more nuanced insights into the dynamics shaping the fan experience during these critical months (Please look at the rmd file to see the code). 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Select relevant columns
+selected_columns <- c('Date', 'Home_Team', 'Home_Score', 'Attendance', 'Place', 
+                      'Win', 'Loss', 'Win_Pct', 'Streak')
+df2 <- select(df, all_of(selected_columns))
+
+df2$Win_Pct <- as.numeric(df2$Win_Pct)
+df2$Home_Score <- as.numeric(df2$Home_Score)
+```
+
+## EDA
+```{r, message=FALSE, warning=FALSE}
+# Summary statistics for attendance
+summary(df2$Attendance)
+```
+
+The descriptive statistics for the data set reveal the following key metrics:
+
+Minimum Attendance: 19,167
+
+1st Quartile Attendance (25th percentile): 23,110
+
+Median Attendance (50th percentile): 27,572
+
+Mean Attendance: 27,789
+
+3rd Quartile Attendance (75th percentile): 31,508
+
+Maximum Attendance: 39,573
+
+These statistics provide a comprehensive overview of the distribution of attendance figures during the specified timeframe. The mean attendance of 27,789 serves as a central measure, while the quartiles offer insights into the spread and variability of attendance across different games. The minimum and maximum values further highlight the range within which attendance fluctuates, providing context for the diversity of fan engagement during the analyzed period.
+```{r, echo=FALSE, eval=FALSE}
+# Scatter plot for Streak vs. Attendance
+ggplot(df2, aes(x = Streak, y = Attendance)) +
+  geom_point() +
+  labs(title = "Streak vs. Attendance",
+       x = "Streak",
+       y = "Attendance") +
+  theme_minimal()
+```
+
+## Correlation
+```{r}
+cor_matrix <- cor(df2[c('Attendance', 'Place', 'Win', 'Loss', 'Win_Pct', 
+                        'Home_Score')])
+cor_matrix
+```
+Attendance vs. Place (-0.3182): There exists a moderate negative correlation between attendance and the team's standing (Place), indicating that as the team's position improves, attendance tends to decrease.
+
+Attendance vs. Win (0.1446): A positive correlation suggests a mild association between attendance and the number of wins. While not a strong correlation, it implies that higher winning records may be linked to increased attendance.
+
+Attendance vs. Loss (-0.4247): The negative correlation with losses suggests that as the number of losses increases, attendance tends to decrease. This could indicate that prolonged periods of unsuccessful performance may impact fan attendance negatively.
+
+Attendance vs. Win Percentage (0.4315): A positive correlation signifies that higher win percentages are associated with increased attendance. This correlation is relatively strong, suggesting that fans may be more inclined to attend games when the team has a favorable win rate.
+
+Attendance vs. Home Score (0.0408): The correlation between attendance and home score is weak, indicating a minimal association. Fan attendance does not significantly vary based on the team's home scoring performance.
+
+This comprehensive analysis of the correlation matrix illuminates the multifaceted dynamics influencing attendance, providing valuable insights for teams seeking to optimize their strategies for enhancing fan engagement.
+
+## Statistical Analysis
+```{r}
+fit <- lm(Attendance ~ Place + Win + Loss + Win_Pct + Home_Score, data = df2)
+summary(fit)
+```
+Model coefficient:
+
+Win_Pct: The coefficient for Win Percentage is 154,923.79, and it is statistically significant with a p-value of 0.0359. This suggests that a higher win percentage is associated with an increase in Attendance.
+
+
+Model Summary:
+
+F-statistic: The F-statistic (5.164) tests the overall significance of the model, with a p-value of 0.0003874. This suggests that, as a whole, the model is statistically significant.
+
+
+The regression model suggests that Win Percentage is a significant predictor of Attendance, while other factors such as Place, Win, Loss, and Home Score do not exhibit statistically significant associations. However, it's essential to interpret these findings cautiously, considering the individual p-values and the overall model fit.
+
+## Hypothesis
+Null Hypothesis H0: There is no significant correlation between Winning Percentage (Win_Pct) and Attendance.
+Alternative Hypothesis H1: There is a significant correlation between Win_Pct and Attendance.
+```{r}
+# Pearson correlation coefficient and test for significance
+correlation_test <- cor.test(df2$Win_Pct, df2$Attendance)
+correlation_test
+```
+The p-value is close to 0. This low p-value indicates that the observed data is highly unlikely under the assumption that the null hypothesis holds true. Consequently, we have sufficient grounds to dismiss the null hypothesis and, by logical extension, accept the alternative hypothesis. This outcome underscores the significance of the relationship between a baseball team's performance metrics and fan attendance, reinforcing our conviction in the presence of a meaningful connection. The statistical rigor employed in this analysis lends robust support to the assertion that the alternative hypothesis is indeed reflective of the underlying reality.
+
+## Visualization
+```{r, eval=FALSE, echo=FALSE}
+# Define segments based on Win_Pct
+segments <- cut(df2$Win_Pct,
+                breaks = c(-Inf, 0.5, 0.6, 0.7, 0.8, Inf),
+                labels = c("Low", "Mid-Low", "Mid-High", "High", "Very High"))
+#-Inf: This represents negative infinity, indicating values less than or equal to negative infinity. It serves as the lower bound of the first interval, encompassing all values less than 0.5.
+#0.5: The first break signifies values greater than -Inf and less than or equal to 0.5.
+#0.6: The second break represents values greater than 0.5 and less than or equal to 0.6.
+#0.7: The third break encompasses values greater than 0.6 and less than or equal to 0.7.
+#0.8: The fourth break includes values greater than 0.7 and less than or equal to 0.8.
+#Inf: This represents positive infinity, indicating values greater than 0.8. It serves as the upper bound of the last interval.
+
+# Add the segment information to the dataset
+df2 <- cbind(df2, Segment = segments)
+
+### Bar Chart
+avg_attendance <- aggregate(Attendance ~ Segment, data = df2, FUN = mean)
+
+ggplot(avg_attendance, aes(x = Segment, y = Attendance, fill = Segment)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Attendance by Performance Segment",
+       x = "Performance Segment",
+       y = "Average Attendance") +
+  theme_minimal()
+```
+
+
+```{r, eval=FALSE, echo=FALSE}
+segments <- cut(df2$Win_Pct,
+                breaks = c(-Inf, 0.5, 0.6, 0.7, 0.8, Inf),
+                labels = c("Low", "Mid-Low", "Mid-High", "High", "Very High"))
+
+df2 <- cbind(df2, Segment = segments)
+
+ggplot(df2, aes(x = Date, y = Attendance, color = Segment)) +
+  geom_line() +
+  labs(title = "Attendance Trends by Team Performance over time",
+       x = "Date",
+       y = "Attendance",
+       color = "Performance Segment") +
+  theme_minimal() +
+  scale_x_date(labels = date_format("%b %d"), date_breaks = "1 week")
+```
+
+###Box Plot
+```{r}
+segments <- cut(df2$Win_Pct,
+                breaks = c(-Inf, 0.5, 0.6, 0.7, 0.8, Inf),
+                labels = c("Low", "Mid-Low", "Mid-High", "High", "Very High"))
+
+
+df2 <- cbind(df2, Segment = segments)
+
+ggplot(df2, aes(x = Segment, y = Attendance, fill = Segment)) +
+  geom_boxplot() +
+  labs(title = "Distribution of Attendance by Performance Segment",
+       x = "Performance Segment",
+       y = "Attendance") +
+  theme_minimal()
+```
+In our analytical approach, we made a strategic decision to segment the data set based on team performance, categorizing teams into three distinct groups: high-performance, mid-performance, and low-performance. To visually discern the patterns within these segments, we employed Box Plots to illustrate the distribution of attendance across different performance levels.
+
+Upon inspecting these Box Plots, a clear trend emerges: teams characterized by high-performance, particularly those boasting elevated winning percentages, exhibit notably higher fan attendance. This observation aligns with the intuitive expectation that successful teams, as measured by a high win percentage, tend to attract larger crowds and heightened fan engagement.
+
+```{r, eval=FALSE, echo=FALSE}
+## Time-series
+time_series_data <- ts(df2$Attendance, frequency = 7)  # Assuming weekly frequency
+
+autoplot(time_series_data) +
+  labs(title = "Time Series Plot of Attendance",
+       x = "Date",
+       y = "Attendance") +
+  theme_minimal() +
+  scale_x_time(labels = date_format("%b %d"), breaks = "1 week")
+```
+
+## Conclusion:
+In conclusion, our analysis has delved into the nuanced interplay between a baseball team's performance and fan attendance. Employing advanced techniques such as segmentation analysis and correlation studies, we have uncovered intricate patterns that elucidate how team success intricately influences the enthusiasm of spectators, particularly within the temporal context of August and September.
+
+The array of visualizations, spanning from detailed time series plots to comprehensive correlation matrices, has effectively communicated the multifaceted dynamics governing team performance and fan engagement. The segmentation analysis, a sophisticated exploration, brought to light distinct attendance trends among teams with diverse performance levels, presenting teams with actionable insights to refine their fan engagement strategies.
+
+The application of rigorous statistical tests has fortified our analytical foundation, facilitating a deeper understanding of the significance behind observed correlations. This, in turn, equips baseball teams with the knowledge to make informed decisions regarding their outreach and marketing endeavors.
+
+In the ever-evolving landscape where baseball teams navigate the delicate equilibrium between on-field prowess and fan connection, our graduate-level analysis emerges as a valuable resource. Offering strategic insights and optimization opportunities for the fan experience, our findings empower teams to forge stronger connections with their audience and elevate the dynamics of overall attendance
