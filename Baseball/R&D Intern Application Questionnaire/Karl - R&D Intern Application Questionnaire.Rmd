@@ -1,0 +1,141 @@
+---
+title: "R&D Intern Application Questionnaire"
+author: "Karl Mbouombouo"
+date: "2023-11-18"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+MODELING QUESTION
+## Packages
+```{r, message=FALSE}
+library(Lahman)
+library(dplyr)
+library(caret)
+library(glmnet)
+teams = Teams
+```
+
+```{r}
+teams$R_diff <- teams$R - teams$RA
+```
+
+## Linear model with the entire data
+```{r}
+fit <- lm(W ~ R_diff, data = teams)
+
+summary(fit)
+```
+
+## Linear model with seasons after 1970
+```{r, results='hide'}
+# Filter data for seasons after 1970
+# Data after 1970 is called "teams2"
+teams2 <- subset(teams, yearID > 1970)
+
+# Clean the data, to use is for the model
+colSums(is.na(teams2))
+```
+
+```{r}
+fit2 <- lm(W ~ R_diff, data = teams2)
+
+summary(fit2)
+```
+
+### 1.  
+```{r}
+# R_diff Coefficient
+coefficient_R_diff <- coef(fit2)["R_diff"]
+cat("The R_diff coefficient is:", coefficient_R_diff, "\n")
+
+# Calculate the number of runs needed for 1 extra win
+runs <- 1 / coefficient_R_diff
+runs
+```
+It means that for every additional run in run differential, you can expect approximately 0.1 additional wins.
+
+The number of runs needed for 1 extra win is approximately 9.888914 (10 if rounded)
+
+### 2.  
+```{r}
+# Using Intercept
+intercept <- coef(fit2)["(Intercept)"]
+cat("The intercept is:", intercept,"\n")
+
+# Using the function predict()
+run0 <- predict(fit2, newdata = data.frame(R_diff = 0))
+round(run0)
+```
+Based on the model's summary, the number of wins that a team is expected to have with a 0 run differential (x = 0) is 78.68483.
+
+The model expects a team with a 0 run differential to win approximately: 79 games (rounded) in a full season.
+
+### 3.
+```{r}
+# Predict expected win total
+expected_wins <- predict(fit2)
+
+# Calculate residuals
+residuals <- resid(fit2)
+
+# Calculate standard deviation of residuals
+sd_residuals <- sd(residuals)
+
+# Calculate the z-score, we use the 7 for the difference
+z_score <- 7 / sd_residuals
+
+# Standard normal distribution to estimate the probability (round to 2 decimals)
+p_7_wins <- pnorm(z_score, lower.tail = FALSE)
+round(p_7_wins * 100, 2)
+```
+The estimated probability that a team wins 7 games more than their expected win total is approximately 23.15%
+
+
+### 4.
+```{r}
+# Create a lagged variable for next season's wins 
+teams2$next_season_wins <- c(teams2$W[-1], NA)
+# And remove rows with missing values in 'next_season_wins'
+teams3 <- teams2[complete.cases(teams2$next_season_wins), ]
+
+# Split the data into training and testing sets
+set.seed(123)  # Set seed for reproducibility
+index <- createDataPartition(teams3$next_season_wins, p = 0.8, list = FALSE)
+train_data <- teams3[index, ]
+test_data <- teams3[-index, ]
+
+# Create a control object for cross-validation
+ctrl <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
+
+# Fit linear regression models with cross-validation
+model_current_w <- train(next_season_wins ~ W, data = train_data, 
+                         method = "lm", trControl = ctrl)
+model_r_diff <- train(next_season_wins ~ R_diff, data = train_data, 
+                      method = "lm", trControl = ctrl)
+model_r <- train(next_season_wins ~ R, data = train_data, 
+                 method = "lm", trControl = ctrl)
+model_ra <- train(next_season_wins ~ RA, data = train_data, 
+                  method = "lm", trControl = ctrl)
+```
+
+```{r}
+# Print the cross-validated model summaries
+print(model_current_w)
+print(model_r_diff)
+print(model_r)
+print(model_ra)
+```
+
+RMSE for the model predicting next season's wins based on current wins: 13.55977
+
+RMSE for the model predicting next season's wins based on run differential model: 14.05394
+
+RMSE for the model predicting next season's wins based on runs scored model: 13.26109
+
+RMSE for the model predicting next season's wins based on runs allowed model: 12.79468
+
+Based on RMSE alone, model_ra appears to be the best-performing model, because it has the lowest RMSE (12.79468).
